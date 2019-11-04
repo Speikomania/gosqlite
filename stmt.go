@@ -114,7 +114,7 @@ func (c *Conn) prepare(sql string, args ...interface{}) (*Stmt, error) {
 	if len(args) > 0 {
 		err := s.Bind(args...)
 		if err != nil {
-			_ = s.finalize()
+			s.finalize()
 			return nil, err
 		}
 	}
@@ -130,7 +130,7 @@ func (c *Conn) Prepare(sql string, args ...interface{}) (*Stmt, error) {
 		if len(args) > 0 {
 			err := s.Bind(args...)
 			if err != nil {
-				_ = s.finalize() // don't put it back in the cache
+				s.finalize() // don't put it back in the cache
 				return nil, err
 			}
 		}
@@ -765,10 +765,10 @@ func (s *Stmt) ScanByIndex(index int, value interface{}) (isNull bool, err error
 		*value, isNull, err = s.ScanTime(index)
 	case sql.Scanner:
 		var v interface{}
-		v, isNull = s.ScanValue(index)
+		v, isNull = s.ScanValue(index, false)
 		err = value.Scan(v)
 	case *interface{}:
-		*value, isNull = s.ScanValue(index)
+		*value, isNull = s.ScanValue(index, false)
 	default:
 		return s.ScanReflect(index, value)
 	}
@@ -837,14 +837,14 @@ func (s *Stmt) ScanReflect(index int, v interface{}) (isNull bool, err error) {
 // Destination type is decided by SQLite.
 // The returned value will be of one of the following types:
 //    nil
-//    string
+//    string (exception if blob is true)
 //    int64
 //    float64
 //    []byte
 //
 // Calls sqlite3_column_(blob|double|int|int64|text) depending on columns type.
 // (See http://sqlite.org/c3ref/column_blob.html)
-func (s *Stmt) ScanValue(index int) (value interface{}, isNull bool) {
+func (s *Stmt) ScanValue(index int, blob bool) (value interface{}, isNull bool) {
 	if index < 0 || index >= s.ColumnCount() {
 		panic(fmt.Sprintf("column index %d out of range [0,%d[.", index, s.ColumnCount()))
 	}
@@ -860,6 +860,11 @@ func (s *Stmt) ScanValue(index int) (value interface{}, isNull bool) {
 				return value, false
 			}
 			Log(-1, err.Error())
+		}
+		if blob {
+			p := C.sqlite3_column_blob(s.stmt, C.int(index))
+			n := C.sqlite3_column_bytes(s.stmt, C.int(index))
+			return C.GoBytes(p, n), false
 		}
 		p := C.sqlite3_column_text(s.stmt, C.int(index))
 		return C.GoString((*C.char)(unsafe.Pointer(p))), false
@@ -884,7 +889,7 @@ func (s *Stmt) ScanValue(index int) (value interface{}, isNull bool) {
 // ScanValues is like ScanValue on several columns.
 func (s *Stmt) ScanValues(values []interface{}) {
 	for i := range values {
-		values[i], _ = s.ScanValue(i)
+		values[i], _ = s.ScanValue(i, false)
 	}
 }
 

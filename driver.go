@@ -28,43 +28,33 @@ func init() {
 }
 
 // impl is an adapter to database/sql/driver
-// https://golang.org/pkg/database/sql/driver/#Driver
 type impl struct {
 	open      func(name string) (*Conn, error)
 	configure func(*Conn) error
 }
-
-// https://golang.org/pkg/database/sql/driver/#Conn
 type conn struct {
 	c *Conn
 }
-
-// https://golang.org/pkg/database/sql/driver/#Stmt
 type stmt struct {
 	s            *Stmt
 	rowsRef      bool // true if there is a rowsImpl associated to this statement that has not been closed.
 	pendingClose bool
 }
-
-// https://golang.org/pkg/database/sql/driver/#Rows
 type rowsImpl struct {
 	s           *stmt
 	columnNames []string // cache
 	ctx         context.Context
 }
 
-// https://golang.org/pkg/database/sql/driver/#Result
 type result struct {
 	id   int64
 	rows int64
 }
 
-// https://golang.org/pkg/database/sql/driver/#Result
 func (r *result) LastInsertId() (int64, error) {
 	return r.id, nil
 }
 
-// https://golang.org/pkg/database/sql/driver/#Result
 func (r *result) RowsAffected() (int64, error) {
 	return r.rows, nil
 }
@@ -94,7 +84,6 @@ var defaultOpen = func(name string) (*Conn, error) {
 // Open opens a new database connection.
 // ":memory:" for memory db,
 // "" for temp file db
-// https://golang.org/pkg/database/sql/driver/#Driver
 func (d *impl) Open(name string) (driver.Conn, error) {
 	c, err := d.open(name)
 	if err != nil {
@@ -118,7 +107,6 @@ func Unwrap(db *sql.DB) *Conn {
 	return nil
 }
 
-// https://golang.org/pkg/database/sql/driver/#Pinger
 func (c *conn) Ping(ctx context.Context) error {
 	if c.c.IsClosed() {
 		return driver.ErrBadConn
@@ -129,12 +117,14 @@ func (c *conn) Ping(ctx context.Context) error {
 
 // PRAGMA schema_version may be used to detect when the database schema is altered
 
-// https://golang.org/pkg/database/sql/driver/#Conn
+func (c *conn) Exec(query string, args []driver.Value) (driver.Result, error) {
+	panic("ExecContext was not called.")
+}
+
 func (c *conn) Prepare(query string) (driver.Stmt, error) {
 	panic("use PrepareContext")
 }
 
-// https://golang.org/pkg/database/sql/driver/#ConnPrepareContext
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
 	if c.c.IsClosed() {
 		return nil, driver.ErrBadConn
@@ -146,7 +136,6 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	return &stmt{s: s}, nil
 }
 
-// https://golang.org/pkg/database/sql/driver/#ExecerContext
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	if c.c.IsClosed() {
 		return nil, driver.ErrBadConn
@@ -186,7 +175,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		}
 		err = s.exec()
 		if err != nil {
-			_ = s.finalize()
+			s.finalize()
 			return nil, ctxError(ctx, err)
 		}
 		if err = s.finalize(); err != nil {
@@ -197,26 +186,10 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	return c.c.result(), nil
 }
 
-// https://golang.org/pkg/database/sql/driver/#QueryerContext
-func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
-	if c.c.IsClosed() {
-		return nil, driver.ErrBadConn
-	}
-	st, err := c.c.Prepare(query)
-	if err != nil {
-		return nil, err
-	}
-	s := &stmt{s: st}
-	return s.QueryContext(ctx, args)
-}
-
-// https://golang.org/pkg/database/sql/driver/#Conn
 func (c *conn) Close() error {
 	return c.c.Close()
 }
 
-// https://golang.org/pkg/database/sql/driver/#Conn
-// Deprecated
 func (c *conn) Begin() (driver.Tx, error) {
 	if c.c.IsClosed() {
 		return nil, driver.ErrBadConn
@@ -227,13 +200,12 @@ func (c *conn) Begin() (driver.Tx, error) {
 	return c, nil
 }
 
-// https://golang.org/pkg/database/sql/driver/#ConnBeginTx
 func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
 	if c.c.IsClosed() {
 		return nil, driver.ErrBadConn
 	}
 	if !c.c.GetAutocommit() {
-		return nil, errors.New("nested transactions are not supported")
+		return nil, errors.New("Nested transactions are not supported")
 	}
 	if err := c.c.SetQueryOnly("", opts.ReadOnly); err != nil {
 		return nil, err
@@ -253,26 +225,13 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	return c.Begin()
 }
 
-// https://golang.org/pkg/database/sql/driver/#Tx
 func (c *conn) Commit() error {
 	return c.c.Commit()
 }
-
-// https://golang.org/pkg/database/sql/driver/#Tx
 func (c *conn) Rollback() error {
 	return c.c.Rollback()
 }
 
-// https://golang.org/pkg/database/sql/driver/#SessionResetter
-func (c *conn) ResetSession(ctx context.Context) error {
-	// closed or pending transaction or at least one statement busy
-	if c.c.IsClosed() || !c.c.GetAutocommit() /*|| c.c.IsBusy()*/ {
-		return driver.ErrBadConn
-	}
-	return nil
-}
-
-// https://golang.org/pkg/database/sql/driver/#Stmt
 func (s *stmt) Close() error {
 	if s.rowsRef { // Currently, it never happens because the sql.Stmt doesn't call driver.Stmt in this case
 		s.pendingClose = true
@@ -281,24 +240,18 @@ func (s *stmt) Close() error {
 	return s.s.Finalize()
 }
 
-// https://golang.org/pkg/database/sql/driver/#Stmt
 func (s *stmt) NumInput() int {
 	return s.s.BindParameterCount()
 }
 
-// https://golang.org/pkg/database/sql/driver/#Stmt
-// Deprecated
 func (s *stmt) Exec(args []driver.Value) (driver.Result, error) {
 	panic("Using ExecContext")
 }
 
-// https://golang.org/pkg/database/sql/driver/#Stmt
-// Deprecated
 func (s *stmt) Query(args []driver.Value) (driver.Rows, error) {
 	panic("Use QueryContext")
 }
 
-// https://golang.org/pkg/database/sql/driver/#StmtExecContext
 func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
 	if err := s.s.bindNamedValue(args); err != nil {
 		return nil, err
@@ -313,7 +266,6 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	return s.s.c.result(), nil
 }
 
-// https://golang.org/pkg/database/sql/driver/#StmtQueryContext
 func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
 	if s.rowsRef {
 		return nil, errors.New("previously returned Rows still not closed")
@@ -337,7 +289,6 @@ func (s *stmt) bind(args []driver.Value) error {
 	return nil
 }
 
-// https://golang.org/pkg/database/sql/driver/#Rows
 func (r *rowsImpl) Columns() []string {
 	if r.columnNames == nil {
 		r.columnNames = r.s.s.ColumnNames()
@@ -345,7 +296,6 @@ func (r *rowsImpl) Columns() []string {
 	return r.columnNames
 }
 
-// https://golang.org/pkg/database/sql/driver/#Rows
 func (r *rowsImpl) Next(dest []driver.Value) error {
 	ok, err := r.s.s.Next()
 	if err != nil {
@@ -355,7 +305,7 @@ func (r *rowsImpl) Next(dest []driver.Value) error {
 		return io.EOF
 	}
 	for i := range dest {
-		dest[i], _ = r.s.s.ScanValue(i)
+		dest[i], _ = r.s.s.ScanValue(i, true)
 		/*if !driver.IsScanValue(dest[i]) {
 			panic("Invalid type returned by ScanValue")
 		}*/
@@ -363,7 +313,6 @@ func (r *rowsImpl) Next(dest []driver.Value) error {
 	return nil
 }
 
-// https://golang.org/pkg/database/sql/driver/#Rows
 func (r *rowsImpl) Close() error {
 	if r.ctx.Done() != nil {
 		r.s.s.c.ProgressHandler(nil, 0, nil)
@@ -375,12 +324,10 @@ func (r *rowsImpl) Close() error {
 	return r.s.s.Reset()
 }
 
-// https://golang.org/pkg/database/sql/driver/#RowsNextResultSet
 func (r *rowsImpl) HasNextResultSet() bool {
 	return len(r.s.s.tail) > 0
 }
 
-// https://golang.org/pkg/database/sql/driver/#RowsNextResultSet
 func (r *rowsImpl) NextResultSet() error {
 	currentStmt := r.s.s
 	nextQuery := currentStmt.tail
@@ -409,7 +356,6 @@ func (r *rowsImpl) NextResultSet() error {
 	return nil
 }
 
-// https://golang.org/pkg/database/sql/driver/#RowsColumnTypeScanType
 func (r *rowsImpl) ColumnTypeScanType(index int) reflect.Type {
 	switch r.s.s.ColumnType(index) {
 	case Integer:
@@ -427,7 +373,6 @@ func (r *rowsImpl) ColumnTypeScanType(index int) reflect.Type {
 	}
 }
 
-// https://golang.org/pkg/database/sql/driver/#RowsColumnTypeDatabaseTypeName
 func (r *rowsImpl) ColumnTypeDatabaseTypeName(index int) string {
 	return r.s.s.ColumnDeclaredType(index)
 }

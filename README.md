@@ -1,4 +1,4 @@
-[![GoDoc](https://godoc.org/github.com/gwenn/gosqlite?status.svg)](https://godoc.org/github.com/gwenn/gosqlite) [![Build Status][1]][2] [![Go Report Card](https://goreportcard.com/badge/github.com/gwenn/gosqlite)](https://goreportcard.com/report/github.com/gwenn/gosqlite) [![Coverage Status](https://coveralls.io/repos/github/gwenn/gosqlite/badge.svg?branch=master)](https://coveralls.io/github/gwenn/gosqlite?branch=master)
+[![GoDoc](https://godoc.org/github.com/gwenn/gosqlite?status.svg)](https://godoc.org/github.com/gwenn/gosqlite) [![Build Status][1]][2] [![Go Report Card](https://goreportcard.com/badge/github.com/gwenn/gosqlite)](https://goreportcard.com/report/github.com/gwenn/gosqlite)
 
 [1]: https://secure.travis-ci.org/gwenn/gosqlite.png
 [2]: http://www.travis-ci.org/gwenn/gosqlite
@@ -79,8 +79,7 @@ SQLite logs (SQLITE_CONFIG_LOG) can be activated by:
 
 https://github.com/mattn/go-sqlite3 (Nov 11, 2011)  
 https://github.com/mxk/go-sqlite (Feb 12, 2013)  
-https://github.com/crawshaw/sqlite (Mar 28, 2018)  
-https://github.com/bvinc/go-sqlite-lite (Aug 7, 2018)
+https://github.com/crawshaw/sqlite (Mar 28, 2018)
 
 ### Additions:
 

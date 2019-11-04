@@ -6,8 +6,10 @@
 package sqlite
 
 /*
-#cgo linux freebsd pkg-config: sqlite3
-#cgo !linux,!freebsd LDFLAGS: -lsqlite3
+//#cgo linux freebsd pkg-config: sqlite3
+//#cgo !linux,!freebsd LDFLAGS: -lsqlite3
+#cgo CFLAGS: -I.
+#cgo CFLAGS: -DSQLITE_ENABLE_COLUMN_METADATA=1
 
 #include <sqlite3.h>
 #include <stdlib.h>
@@ -294,7 +296,7 @@ func authorizer(d interface{}, action Action, arg1, arg2, dbName, triggerName st
 }
 */
 func trace(d interface{}, sql string) {
-	_, _ = fmt.Fprintf(os.Stderr, "%s: %s\n", d, sql)
+	fmt.Fprintf(os.Stderr, "%s: %s\n", d, sql)
 }
 
 // BusyTimeout sets a busy timeout and clears any previously set handler.
@@ -347,7 +349,7 @@ func (c *Conn) Exec(cmd string, args ...interface{}) error {
 		}
 		err = s.Exec(subargs...)
 		if err != nil {
-			_ = s.finalize()
+			s.finalize()
 			return err
 		}
 		if err = s.finalize(); err != nil {
@@ -519,7 +521,7 @@ func (c *Conn) Commit() error {
 	// the ROLLBACK will do nothing but return an error that can be safely ignored.
 	err := c.FastExec("COMMIT")
 	if err != nil && !c.GetAutocommit() {
-		_ = c.Rollback()
+		c.Rollback()
 	}
 	return err
 }
@@ -552,7 +554,7 @@ func (c *Conn) Transaction(t TransactionType, f func(c *Conn) error) error {
 		if err != nil {
 			_, ko := err.(*ConnError)
 			if c.nTransaction == 0 || ko {
-				_ = c.Rollback()
+				c.Rollback()
 			} else {
 				if rerr := c.RollbackSavepoint(strconv.Itoa(int(c.nTransaction))); rerr != nil {
 					Log(-1, rerr.Error())
@@ -567,7 +569,7 @@ func (c *Conn) Transaction(t TransactionType, f func(c *Conn) error) error {
 				err = c.ReleaseSavepoint(strconv.Itoa(int(c.nTransaction)))
 			}
 			if err != nil {
-				_ = c.Rollback()
+				c.Rollback()
 			}
 		}
 	}()
@@ -637,7 +639,7 @@ func (c *Conn) Close() error {
 			if C.sqlite3_stmt_busy(stmt) != 0 {
 				Log(C.SQLITE_MISUSE, "Dangling statement (not reset): \""+C.GoString(C.sqlite3_sql(stmt))+"\"")
 			} else {
-				Log(C.SQLITE_MISUSE, "Dangling statement (not finalized): \""+C.GoString(C.sqlite3_sql(stmt))+"\"")
+				Log(C.SQLITE_MISUSE, "Dangling statement (not finalize): \""+C.GoString(C.sqlite3_sql(stmt))+"\"")
 			}
 			C.sqlite3_finalize(stmt)
 			stmt = C.sqlite3_next_stmt(c.db, nil)
@@ -651,18 +653,6 @@ func (c *Conn) Close() error {
 	}
 	c.db = nil
 	return nil
-}
-
-// IsBusy tells if at least one statement has not been reset/finalized.
-func (c *Conn) IsBusy() bool {
-	stmt := C.sqlite3_next_stmt(c.db, nil)
-	for stmt != nil {
-		if C.sqlite3_stmt_busy(stmt) != 0 {
-			return true
-		}
-		stmt = C.sqlite3_next_stmt(c.db, stmt)
-	}
-	return false
 }
 
 // IsClosed tells if the database connection has been closed.

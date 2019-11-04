@@ -93,7 +93,7 @@ func (b *Backup) Run(npage int32, sleepNs time.Duration, c chan<- BackupStatus) 
 		}
 	}
 	if err != Done {
-		_ = b.Close()
+		b.Close()
 	} else {
 		if c != nil {
 			c <- b.Status()
